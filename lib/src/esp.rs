@@ -16,6 +16,13 @@ pub struct Esp {
 }
 
 fn find_efi_bin(search_path: &Path, bin_name: &str) -> io::Result<PathBuf> {
+    if !fs::metadata(search_path)?.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotADirectory,
+            format!("{search_path:?}"),
+        ));
+    }
+
     let glob_path = search_path.join(Path::new("**/EFI/*/").join(bin_name));
     let glob_pattern = glob_path.to_str().ok_or_else(|| {
         io::Error::new(
@@ -47,9 +54,6 @@ fn find_efi_bin(search_path: &Path, bin_name: &str) -> io::Result<PathBuf> {
 impl Esp {
     pub fn new(path: &str) -> io::Result<Esp> {
         let path_pb = PathBuf::from(path);
-        if !fs::metadata(path)?.is_dir() {
-            return Err(io::Error::new(io::ErrorKind::NotADirectory, path));
-        }
 
         Ok(Esp {
             grub: find_efi_bin(&path_pb, "grubx64.efi")?,
