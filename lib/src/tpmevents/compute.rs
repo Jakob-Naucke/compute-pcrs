@@ -93,7 +93,9 @@ pub fn pcr4_events(
         events.push(TPMEvent {
             name: "EV_EFI_BOOT_SERVICES_APPLICATION".into(),
             pcr: n_pcr,
-            hash: linux::load_vmlinuz(kernels_dir).unwrap().authenticode(),
+            hash: linux::load_vmlinuz(kernels_dir.as_ref())
+                .unwrap()
+                .authenticode(),
             id: TPMEventID::Pcr4Vmlinuz,
         });
     }
