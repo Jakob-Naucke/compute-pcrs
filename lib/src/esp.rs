@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct Esp {
-    shim: PathBuf,
-    grub: PathBuf,
+    shim: Vec<u8>,
+    grub: Vec<u8>,
 }
 
 fn find_efi_bin(search_path: &Path, bin_name: &str) -> io::Result<PathBuf> {
@@ -51,25 +51,25 @@ fn find_efi_bin(search_path: &Path, bin_name: &str) -> io::Result<PathBuf> {
     ))
 }
 
-impl Esp {
-    pub fn new(path: &str) -> io::Result<Esp> {
-        let path_pb = PathBuf::from(path);
+fn load_efi_bin(search_path: &Path, bin_name: &str) -> io::Result<Vec<u8>> {
+    fs::read(find_efi_bin(search_path, bin_name)?)
+}
 
+impl Esp {
+    pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Esp> {
         Ok(Esp {
-            grub: find_efi_bin(&path_pb, "grubx64.efi")?,
-            shim: find_efi_bin(&path_pb, "shimx64.efi")?,
+            grub: load_efi_bin(path.as_ref(), "grubx64.efi")?,
+            shim: load_efi_bin(path.as_ref(), "shimx64.efi")?,
         })
     }
 
     /// Tries loading the shim binary
-    pub fn shim(&self) -> pefile::PeFile {
-        pefile::PeFile::load_from_file(&self.shim.to_string_lossy(), false)
-            .expect("Can't open shim binary")
+    pub fn shim(&self) -> pefile::PeFile<'_> {
+        pefile::PeFile::new(&self.shim).expect("Can't open shim binary")
     }
 
     /// Tries loading the grub binary
-    pub fn grub(&self) -> pefile::PeFile {
-        pefile::PeFile::load_from_file(&self.grub.to_string_lossy(), false)
-            .expect("Can't open grub binary")
+    pub fn grub(&self) -> pefile::PeFile<'_> {
+        pefile::PeFile::new(&self.grub).expect("Can't open grub binary")
     }
 }

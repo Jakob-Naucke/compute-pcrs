@@ -4,12 +4,13 @@
 // SPDX-License-Identifier: MIT
 
 use crate::pefile::PeFile;
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::result::Result;
 
 pub struct Linux {
-    path: PathBuf,
+    bin: Vec<u8>,
 }
 
 /// Given a glob pattern find and load a vmlinuz image candidate
@@ -34,16 +35,19 @@ fn find_vmlinuz(linux_path: &Path) -> Result<PathBuf, Box<dyn std::error::Error>
     )))
 }
 
+pub fn load_vmlinuz(linux_path: &Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    return Ok(fs::read(find_vmlinuz(linux_path)?)?);
+}
+
 impl Linux {
     pub fn new<P: AsRef<Path>>(linux_path: P) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Linux {
-            path: find_vmlinuz(linux_path.as_ref())?,
+            bin: load_vmlinuz(linux_path.as_ref())?,
         })
     }
 
-    fn pe(&self) -> PeFile {
-        PeFile::load_from_file(&self.path.to_string_lossy(), true)
-            .expect("can't parse linux binary")
+    fn pe(&self) -> PeFile<'_> {
+        PeFile::new(&self.bin).expect("can't parse linux binary")
     }
 
     pub fn authenticode(&self) -> Vec<u8> {
