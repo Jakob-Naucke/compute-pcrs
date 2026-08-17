@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: MIT
 pub use pcrs::Pcr;
 
+mod cert_db;
 pub mod certs;
 mod esp;
 mod linux;

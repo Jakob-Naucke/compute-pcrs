@@ -2,13 +2,15 @@
 // SPDX-FileCopyrightText: Beñat Gartzia Arruabarrena <bgartzia@redhat.com>
 //
 // SPDX-License-Identifier: MIT
-use lief::generic::Section;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
+use std::fs;
 
+use crate::cert_db::Certdb;
 use crate::esp;
 use crate::linux;
 use crate::mok;
+use crate::pefile;
 use crate::shim;
 use crate::tpmevents::TPMEvent;
 use crate::tpmevents::TPMEventID;
@@ -92,7 +94,7 @@ pub fn pcr4_events(
         events.push(TPMEvent {
             name: "EV_EFI_BOOT_SERVICES_APPLICATION".into(),
             pcr: n_pcr,
-            hash: linux::load_vmlinuz(kernels_dir).unwrap().authenticode(),
+            hash: linux::Linux::new(kernels_dir).unwrap().authenticode(),
             id: TPMEventID::Pcr4Vmlinuz,
         });
     }
@@ -109,7 +111,7 @@ pub fn pcr7_events(efivars_path: &str, esp_path: &str, secureboot_enabled: bool)
     let shim_bin = esp.shim();
     let sbatlevel_raw = shim_bin.section(shim::SHIM_SBATLEVEL_SECTION);
     let sb_db = sb_var_loader.secureboot_db();
-    let sb_db_certs = crate::certs::get_db_certs(&sb_db).unwrap();
+    let sb_db_certs = Certdb::from_bytes(&sb_db).unwrap();
     let mut events: Vec<TPMEvent> = vec![];
 
     // Secure boot state: enabled/disabled
@@ -160,7 +162,7 @@ pub fn pcr7_events(efivars_path: &str, esp_path: &str, secureboot_enabled: bool)
             id: TPMEventID::Pcr7SbatLevel,
         });
     } else if let Some(data) = sbatlevel_raw {
-        let sbatlevel = shim::get_sbatlevel_uefivar(&data, &shim::SbatLevelPolicyType::PREVIOUS);
+        let sbatlevel = shim::get_sbatlevel_uefivar(data, &shim::SbatLevelPolicyType::PREVIOUS);
         events.push(TPMEvent {
             name: "EV_EFI_VARIABLE_AUTHORITY".into(),
             pcr: n_pcr,
@@ -240,7 +242,8 @@ pub fn pcr7_events(efivars_path: &str, esp_path: &str, secureboot_enabled: bool)
 pub fn pcr11_events(uki: &str) -> Vec<TPMEvent> {
     let n_pcr = 11;
     let sections: Vec<&str> = vec![".linux", ".osrel", ".cmdline", ".initrd", ".uname", ".sbat"];
-    let pe: lief::pe::Binary = lief::pe::Binary::parse(uki).unwrap();
+    let data = fs::read(uki).unwrap();
+    let pe = pefile::PeFile::new(&data).unwrap();
     let mut events: Vec<TPMEvent> = vec![];
 
     sections
@@ -248,7 +251,7 @@ pub fn pcr11_events(uki: &str) -> Vec<TPMEvent> {
         .zip(MODELS_UKI_SECTION_NAME)
         .zip(MODELS_UKI_SECTION_CONTENT)
         .for_each(|((s, nid), cid)| {
-            let section = pe.section_by_name(s).unwrap();
+            let section = pe.section(s).unwrap();
             events.push(TPMEvent {
                 name: (*s).into(),
                 pcr: n_pcr,
@@ -258,7 +261,7 @@ pub fn pcr11_events(uki: &str) -> Vec<TPMEvent> {
             events.push(TPMEvent {
                 name: format!("{}_CONTENT", *s),
                 pcr: n_pcr,
-                hash: Sha256::digest(section.content()).to_vec(),
+                hash: Sha256::digest(section).to_vec(),
                 id: cid,
             });
         });
