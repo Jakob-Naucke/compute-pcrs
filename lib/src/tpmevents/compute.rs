@@ -6,6 +6,7 @@ use lief::generic::Section;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 
+use crate::cert_db::Certdb;
 use crate::esp;
 use crate::linux;
 use crate::mok;
@@ -109,7 +110,7 @@ pub fn pcr7_events(efivars_path: &str, esp_path: &str, secureboot_enabled: bool)
     let shim_bin = esp.shim();
     let sbatlevel_raw = shim_bin.section(shim::SHIM_SBATLEVEL_SECTION);
     let sb_db = sb_var_loader.secureboot_db();
-    let sb_db_certs = crate::certs::get_db_certs(&sb_db).unwrap();
+    let sb_db_certs = Certdb::from_bytes(&sb_db).unwrap();
     let mut events: Vec<TPMEvent> = vec![];
 
     // Secure boot state: enabled/disabled

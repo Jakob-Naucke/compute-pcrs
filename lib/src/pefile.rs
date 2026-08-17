@@ -7,6 +7,10 @@ use lief::generic::Section;
 use std::fs::File;
 use std::os::unix::fs::FileExt;
 
+use openssl::x509::X509;
+
+use crate::cert_db::Certdb;
+
 const SHIM_VENDOR_CERT_SECTION: &str = ".vendor_cert";
 
 pub struct PeFile {
@@ -102,39 +106,34 @@ impl PeFile {
     /// The pe file can carry a .vendor_cert section, in which it could store
     /// certificates in db format. Just as shim could do.
     /// This function parses the db and returns the certificates
-    pub fn vendor_db(&self) -> Vec<crate::certs::X509Cert> {
-        match self.get_vendor_cert_auth() {
-            None => vec![],
-            Some(certs) => crate::certs::get_db_certs(&certs).unwrap_or_default(),
+    pub fn vendor_db(&self) -> Certdb {
+        if let Some(db_bytes) = self.get_vendor_cert_auth() {
+            return Certdb::from_bytes(&db_bytes).unwrap_or_default();
         }
+        Certdb::default()
     }
 
     /// The .vendor_cert section of the pe file could also store just a
     /// certificate. Just as shim could do.
     /// This function parses the certificate and returns a vector that holds it
-    pub fn vendor_cert(&self) -> Vec<crate::certs::X509Cert> {
-        if let Some(vendor_cert_auth) = self.get_vendor_cert_auth() {
-            return match crate::certs::X509Cert::from_der(&vendor_cert_auth) {
-                Ok(cert) => vec![cert],
-                Err(_) => vec![],
-            };
+    pub fn vendor_cert(&self) -> Certdb {
+        if let Some(der_bytes) = self.get_vendor_cert_auth() {
+            return Certdb::from_unique_der(&der_bytes).unwrap_or_default();
         }
-        vec![]
+        Certdb::default()
     }
 
     pub fn signatures(&self) -> lief::pe::signature::Signatures<'_> {
         self.image.signatures()
     }
 
-    pub fn find_cert_in_db(&self, db: &Vec<crate::certs::X509Cert>) -> Option<Vec<u8>> {
+    pub fn find_cert_in_db(&self, db: &Certdb) -> Option<Vec<u8>> {
         for signature in self.signatures() {
             for certificate in signature.certificates() {
-                let file_cert_subject = certificate.subject();
-                let file_cert_issuer = certificate.issuer();
-                for cert in db {
-                    if cert.subject == file_cert_subject || cert.subject == file_cert_issuer {
-                        return Some(cert.raw.clone());
-                    }
+                if let Ok(ossl_cert) = X509::from_der(&certificate.raw())
+                    && let Some(cert) = db.get(ossl_cert.as_ref())
+                {
+                    return Some(cert.raw());
                 }
             }
         }
